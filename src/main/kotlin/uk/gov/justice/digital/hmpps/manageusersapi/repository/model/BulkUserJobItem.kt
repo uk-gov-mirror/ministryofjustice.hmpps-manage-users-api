@@ -29,8 +29,9 @@ data class BulkUserJobItem(
 
 enum class BulkUserJobItemStatus {
   CREATED,
-  STARTED,
+  CLAIMED,
   PUBLISHED,
+  STARTED,
   SUCCESS,
   ERROR,
 }

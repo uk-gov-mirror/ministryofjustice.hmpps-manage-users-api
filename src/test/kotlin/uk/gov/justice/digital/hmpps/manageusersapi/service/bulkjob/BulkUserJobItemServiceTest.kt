@@ -12,8 +12,6 @@ import uk.gov.justice.digital.hmpps.manageusersapi.repository.BulkUserJobItemRep
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJob
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItem
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItemStatus
-import uk.gov.justice.digital.hmpps.manageusersapi.service.EntityNotFoundException
-import java.util.Optional
 import java.util.UUID
 
 class BulkUserJobItemServiceTest {
@@ -25,34 +23,87 @@ class BulkUserJobItemServiceTest {
   fun `processes job item when status is created`() {
     val job = BulkUserJob(jiraReference = "JIRA-123", requestedBy = "userabc")
     val item = BulkUserJobItem(username = "USER123", rolename = "ROLE_ONE", status = BulkUserJobItemStatus.CREATED, bulkUserJob = job)
-    whenever(bulkUserJobItemRepository.findById(item.id)).thenReturn(Optional.of(item))
+    whenever(
+      bulkUserJobItemRepository.updateStatusIfCurrent(
+        item.id,
+        BulkUserJobItemStatus.CREATED,
+        BulkUserJobItemStatus.CLAIMED,
+      ),
+    ).thenReturn(1)
+    whenever(
+      bulkUserJobItemRepository.updateStatusIfCurrent(
+        item.id,
+        BulkUserJobItemStatus.CLAIMED,
+        BulkUserJobItemStatus.PUBLISHED,
+      ),
+    ).thenReturn(1)
 
     service.processJobItem(job, item)
 
     verify(bulkUserJobItemPublisher).publishBulkUserJobItemEvent(job, item)
-    verify(bulkUserJobItemRepository).save(item)
+    verify(bulkUserJobItemRepository).updateStatusIfCurrent(item.id, BulkUserJobItemStatus.CREATED, BulkUserJobItemStatus.CLAIMED)
+    verify(bulkUserJobItemRepository).updateStatusIfCurrent(item.id, BulkUserJobItemStatus.CLAIMED, BulkUserJobItemStatus.PUBLISHED)
   }
 
   @Test
-  fun `skips processing when status is not created`() {
+  fun `skips processing when item cannot be claimed`() {
     val job = BulkUserJob(jiraReference = "JIRA-123", requestedBy = "userabc")
     val item = BulkUserJobItem(username = "USER123", rolename = "ROLE_ONE", status = BulkUserJobItemStatus.PUBLISHED, bulkUserJob = job)
-    whenever(bulkUserJobItemRepository.findById(item.id)).thenReturn(Optional.of(item))
+    whenever(
+      bulkUserJobItemRepository.updateStatusIfCurrent(
+        item.id,
+        BulkUserJobItemStatus.CREATED,
+        BulkUserJobItemStatus.CLAIMED,
+      ),
+    ).thenReturn(0)
 
     service.processJobItem(job, item)
 
     verify(bulkUserJobItemPublisher, never()).publishBulkUserJobItemEvent(any(), any())
-    verify(bulkUserJobItemRepository, never()).save(any())
+    verify(bulkUserJobItemRepository, never()).updateStatusIfCurrent(item.id, BulkUserJobItemStatus.CLAIMED, BulkUserJobItemStatus.PUBLISHED)
   }
 
   @Test
-  fun `throws exception when job item cannot be found`() {
+  fun `releases claim when publish fails`() {
     val job = BulkUserJob(jiraReference = "JIRA-123", requestedBy = "userabc")
-    val item = BulkUserJobItem(id = UUID.randomUUID(), username = "USER123", rolename = "ROLE_ONE", bulkUserJob = job)
-    whenever(bulkUserJobItemRepository.findById(item.id)).thenReturn(Optional.empty())
+    val item = BulkUserJobItem(username = "USER123", rolename = "ROLE_ONE", status = BulkUserJobItemStatus.CREATED, bulkUserJob = job)
+    whenever(
+      bulkUserJobItemRepository.updateStatusIfCurrent(
+        item.id,
+        BulkUserJobItemStatus.CREATED,
+        BulkUserJobItemStatus.CLAIMED,
+      ),
+    ).thenReturn(1)
+    whenever(bulkUserJobItemPublisher.publishBulkUserJobItemEvent(job, item)).thenThrow(RuntimeException("send failed"))
 
     assertThatThrownBy { service.processJobItem(job, item) }
-      .isInstanceOf(EntityNotFoundException::class.java)
-      .hasMessage("Bulk user job item not found: ${item.id}")
+      .isInstanceOf(RuntimeException::class.java)
+      .hasMessage("send failed")
+
+    verify(bulkUserJobItemRepository).updateStatusIfCurrent(item.id, BulkUserJobItemStatus.CLAIMED, BulkUserJobItemStatus.CREATED)
+  }
+
+  @Test
+  fun `throws when item cannot be marked as published`() {
+    val job = BulkUserJob(jiraReference = "JIRA-123", requestedBy = "userabc")
+    val item = BulkUserJobItem(id = UUID.randomUUID(), username = "USER123", rolename = "ROLE_ONE", bulkUserJob = job)
+    whenever(
+      bulkUserJobItemRepository.updateStatusIfCurrent(
+        item.id,
+        BulkUserJobItemStatus.CREATED,
+        BulkUserJobItemStatus.CLAIMED,
+      ),
+    ).thenReturn(1)
+    whenever(
+      bulkUserJobItemRepository.updateStatusIfCurrent(
+        item.id,
+        BulkUserJobItemStatus.CLAIMED,
+        BulkUserJobItemStatus.PUBLISHED,
+      ),
+    ).thenReturn(0)
+
+    assertThatThrownBy { service.processJobItem(job, item) }
+      .isInstanceOf(IllegalStateException::class.java)
+      .hasMessage("Bulk user job item ${item.id} could not be marked as PUBLISHED from CLAIMED")
   }
 }
