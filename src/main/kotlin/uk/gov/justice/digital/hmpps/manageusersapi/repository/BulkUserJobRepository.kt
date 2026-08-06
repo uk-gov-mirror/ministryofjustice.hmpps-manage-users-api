@@ -8,6 +8,8 @@ import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJob
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobDetails
+import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItemStatus
+import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobStatus
 import java.util.UUID
 
 @Repository
@@ -43,4 +45,24 @@ interface BulkUserJobRepository : JpaRepository<BulkUserJob, UUID> {
     """,
   )
   fun findDetailsById(@Param("jobId") jobId: UUID): BulkUserJobDetails?
+
+  @Query(
+    """
+    SELECT b.id FROM BulkUserJob b
+    WHERE b.id = :jobId
+    AND b.status = :statusComplete
+    AND NOT EXISTS (
+        SELECT i FROM BulkUserJobItem i
+        WHERE i.bulkUserJob.id = b.id
+        AND i.status NOT IN :jobItemStatuses
+    )
+  """,
+  )
+  fun findCompletedJobById(
+    @Param("jobId") jobId: UUID,
+    @Param("statusComplete") status: BulkUserJobStatus = BulkUserJobStatus.COMPLETE,
+    @Param("jobItemStatuses") jobItemStatuses: Set<BulkUserJobItemStatus> = setOf(
+      BulkUserJobItemStatus.SUCCESS, BulkUserJobItemStatus.ERROR,
+    ),
+  ): UUID?
 }

@@ -6,19 +6,25 @@ import org.apache.commons.csv.CSVRecord
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
 import uk.gov.justice.digital.hmpps.manageusersapi.event.BulkJobPublisher
+import uk.gov.justice.digital.hmpps.manageusersapi.repository.BulkUserJobItemRepository
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.BulkUserJobRepository
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJob
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobDetails
+import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItem
 import uk.gov.justice.digital.hmpps.manageusersapi.resource.bulkjob.BulkUserRoleAdditionsRequest
+import uk.gov.justice.digital.hmpps.manageusersapi.service.EntityNotFoundException
+import java.io.Writer
 import java.util.UUID
 
 @Service
 class BulkUserJobService(
   private val bulkUserJobRepository: BulkUserJobRepository,
+  private val bulkUserJobItemRepository: BulkUserJobItemRepository,
   private val bulkJobPublisher: BulkJobPublisher,
 ) {
   @Transactional
@@ -47,6 +53,24 @@ class BulkUserJobService(
   }
 
   fun getBulkUserRoleAdditionsJobDetails(id: UUID): BulkUserJobDetails? = bulkUserJobRepository.findDetailsById(id)
+
+  @Transactional
+  fun writeJobResultsToCsv(writer: Writer, jobId: UUID) {
+    bulkUserJobRepository.findByIdOrNull(jobId)?.let {
+      bulkUserJobRepository.findCompletedJobById(jobId)?.let {
+        writer.write("userId,roleCode,status,reason\n")
+
+        bulkUserJobItemRepository.streamByBulkUserJobId(jobId)?.let { stream ->
+          stream.forEach { item ->
+            writer.write(item.toCsvRow())
+          }
+          writer.flush()
+        }
+      } ?: throw BulkUserJobNotCompleteException(jobId)
+    } ?: throw BulkUserJobNotFoundException(jobId)
+  }
+
+  private fun BulkUserJobItem.toCsvRow(): String = "$username,$rolename,$status,${result?:""}\n"
 
   private fun createAndPersistJob(
     bulkJobDetails: BulkUserRoleAdditionsRequest,
@@ -79,3 +103,7 @@ class BulkUserJobService(
     return users
   }
 }
+
+class BulkUserJobNotFoundException(id: UUID) : EntityNotFoundException("Bulk user job $id not found")
+
+class BulkUserJobNotCompleteException(id: UUID) : Exception("unable to generate bulk user download csv: job $id is not complete")

@@ -6,12 +6,20 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.within
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import org.mockito.ArgumentCaptor
+import org.mockito.Captor
+import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeast
+import org.mockito.kotlin.firstValue
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
@@ -19,23 +27,30 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.mock.web.MockMultipartFile
 import uk.gov.justice.digital.hmpps.manageusersapi.event.BulkJobPublisher
+import uk.gov.justice.digital.hmpps.manageusersapi.repository.BulkUserJobItemRepository
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.BulkUserJobRepository
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJob
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobDetails
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItem
+import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItemStatus
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItemStatus.CREATED
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobStatus
 import uk.gov.justice.digital.hmpps.manageusersapi.resource.bulkjob.BulkUserRoleAdditionsRequest
+import java.io.Writer
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit.SECONDS
+import java.util.Optional
 import java.util.UUID
+import java.util.stream.Stream
 
+@ExtendWith(MockitoExtension::class)
 class BulkUserJobServiceTest {
   private val bulkUserJobRepository: BulkUserJobRepository = mock()
+  private val bulkUserJobItemRepository: BulkUserJobItemRepository = mock()
   private val bulkJobPublisher: BulkJobPublisher = mock()
   private val bulkUserJobCaptor = argumentCaptor<BulkUserJob>()
-  private val bulkUserJobService = BulkUserJobService(bulkUserJobRepository, bulkJobPublisher)
+  private val bulkUserJobService = BulkUserJobService(bulkUserJobRepository, bulkUserJobItemRepository, bulkJobPublisher)
   private var jiraReference: String = "JIRA-123"
   private var roles: List<String> = listOf("ROLE_ONE", "ROLE_TWO")
 
@@ -217,6 +232,151 @@ class BulkUserJobServiceTest {
 
       assertThat(actual).isNull()
       verify(bulkUserJobRepository, times(1)).findDetailsById(id)
+    }
+  }
+
+
+  @Nested
+  inner class WriteJobResultsToCsv {
+
+    @Captor
+    private lateinit var writerCaptor: ArgumentCaptor<String>
+
+    private val writer: Writer = mock()
+    private val job: BulkUserJob = BulkUserJob(jiraReference = "ABC-123", requestedBy = "user1")
+
+    private val jobId = UUID.randomUUID()
+
+    @Test
+    fun `should throw exception when job does not exist`() {
+      whenever(bulkUserJobRepository.findById(jobId))
+        .thenReturn(Optional.empty())
+
+      val actual = assertThrows<BulkUserJobNotFoundException> {
+        bulkUserJobService.writeJobResultsToCsv(writer, jobId)
+      }
+
+      assertThat(actual).isNotNull
+      assertThat(actual.message).isEqualTo("Bulk user job $jobId not found")
+
+      verify(bulkUserJobRepository, times(1)).findById(jobId)
+      verifyNoInteractions(writer, bulkUserJobItemRepository)
+    }
+
+    @Test
+    fun `should throw exception when job exists but is not complete`() {
+      whenever(bulkUserJobRepository.findById(jobId))
+        .thenReturn(Optional.of(job))
+
+      whenever(bulkUserJobRepository.findCompletedJobById(jobId))
+        .thenReturn(null)
+
+      val actual = assertThrows<BulkUserJobNotCompleteException> {
+        bulkUserJobService.writeJobResultsToCsv(writer, jobId)
+      }
+
+      assertThat(actual).isNotNull
+      assertThat(actual.message).isEqualTo("unable to generate bulk user download csv: job $jobId is not complete")
+
+      verify(bulkUserJobRepository, times(1)).findById(jobId)
+      verify(bulkUserJobRepository, times(1)).findCompletedJobById(jobId)
+      verifyNoInteractions(writer)
+    }
+
+    @Test
+    fun `should write header when no items exist for job`() {
+      whenever(bulkUserJobRepository.findById(jobId))
+        .thenReturn(Optional.of(job))
+
+      whenever(bulkUserJobRepository.findCompletedJobById(jobId))
+        .thenReturn(jobId)
+
+      whenever(bulkUserJobItemRepository.streamByBulkUserJobId(jobId))
+        .thenReturn(Stream.empty())
+
+      bulkUserJobService.writeJobResultsToCsv(writer, jobId)
+
+      verify(bulkUserJobRepository, times(1)).findById(jobId)
+      verify(bulkUserJobRepository, times(1)).findCompletedJobById(jobId)
+      verify(writer).write(writerCaptor.capture())
+      verify(writer, atLeast(1)).flush()
+
+      assertThat(writerCaptor.allValues).hasSize(1)
+      assertThat(writerCaptor.firstValue).isEqualTo("userId,roleCode,status,reason\n")
+    }
+
+    @Test
+    fun `should write header when items stream is null`() {
+      whenever(bulkUserJobRepository.findById(jobId))
+        .thenReturn(Optional.of(job))
+
+      whenever(bulkUserJobRepository.findCompletedJobById(jobId))
+        .thenReturn(jobId)
+
+      whenever(bulkUserJobItemRepository.streamByBulkUserJobId(jobId))
+        .thenReturn(null)
+
+      bulkUserJobService.writeJobResultsToCsv(writer, jobId)
+
+      verify(bulkUserJobRepository, times(1)).findById(jobId)
+      verify(bulkUserJobRepository, times(1)).findCompletedJobById(jobId)
+      verify(writer).write(writerCaptor.capture())
+      verify(writer, atLeast(1)).flush()
+
+      assertThat(writerCaptor.allValues).hasSize(1)
+      assertThat(writerCaptor.firstValue).isEqualTo("userId,roleCode,status,reason\n")
+    }
+
+    @Test
+    fun `should write all items when items stream is not empty`() {
+      whenever(bulkUserJobRepository.findById(jobId))
+        .thenReturn(Optional.of(job))
+
+      whenever(bulkUserJobRepository.findCompletedJobById(jobId))
+        .thenReturn(jobId)
+
+      whenever(bulkUserJobItemRepository.streamByBulkUserJobId(jobId))
+        .thenReturn(
+          Stream.of(
+            BulkUserJobItem(
+              id = UUID.randomUUID(),
+              username = "user1",
+              rolename = "role1",
+              status = BulkUserJobItemStatus.SUCCESS,
+              result = null,
+              bulkUserJob = job,
+            ),
+            BulkUserJobItem(
+              id = UUID.randomUUID(),
+              username = "user2",
+              rolename = "role2",
+              status = BulkUserJobItemStatus.SUCCESS,
+              result = null,
+              bulkUserJob = job,
+            ),
+            BulkUserJobItem(
+              id = UUID.randomUUID(),
+              username = "user3",
+              rolename = "role3",
+              status = BulkUserJobItemStatus.ERROR,
+              result = "role already assigned",
+              bulkUserJob = job,
+            ),
+          ),
+        )
+
+      bulkUserJobService.writeJobResultsToCsv(writer, jobId)
+
+      verify(bulkUserJobRepository, times(1)).findById(jobId)
+      verify(bulkUserJobRepository, times(1)).findCompletedJobById(jobId)
+      verify(writer, times(4)).write(writerCaptor.capture())
+      verify(writer, atLeast(1)).flush()
+
+      assertThat(writerCaptor.allValues).hasSize(4)
+      assertThat(writerCaptor.allValues[0]).isEqualTo("userId,roleCode,status,reason\n")
+      assertThat(writerCaptor.allValues[1]).isEqualTo("user1,role1,SUCCESS,\n")
+      assertThat(writerCaptor.allValues[2]).isEqualTo("user2,role2,SUCCESS,\n")
+      assertThat(writerCaptor.allValues[3]).isEqualTo("user3,role3,ERROR,role already assigned\n")
     }
   }
 }

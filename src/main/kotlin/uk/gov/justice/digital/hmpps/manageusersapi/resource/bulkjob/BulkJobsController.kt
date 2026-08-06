@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.GroupSequence
 import jakarta.validation.ValidationException
 import jakarta.validation.constraints.NotBlank
@@ -93,6 +94,26 @@ class BulkJobsController(private val bulkUserJobService: BulkUserJobService) {
   ): ResponseEntity<BulkUserRolesAdditionsDetails> = bulkUserJobService.getBulkUserRoleAdditionsJobDetails(id)?.let {
     ResponseEntity.ok(it.toBulkUserRolesAdditionsDetails())
   } ?: ResponseEntity.notFound().build()
+
+
+  @GetMapping(path = ["/user-role-additions/{id}/download"])
+  @PreAuthorize("hasRole('ROLE_MANAGE_USER_BULK_JOBS')")
+  @Operation(
+    summary = "Get bulk user role additions job details.",
+    description = "Returns a bulk user role additions job details.",
+  )
+  @StandardApiResponses
+  fun getUserRoleAdditionsCsvDownload(
+    @PathVariable("id") id: UUID,
+    response: HttpServletResponse,
+  ): ResponseEntity<BulkUserRolesAdditionsDetails>  {
+    response.contentType = "text/csv"
+    response.setHeader("Content-Disposition", "attachment; filename=bulk-roles-assignments-${id}.csv")
+    response.writer.use { writer ->
+
+    }
+    return ResponseEntity.noContent().build()
+  }
 
   private fun validateCsvFile(file: MultipartFile) {
     if (file.isEmpty) {
