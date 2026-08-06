@@ -39,7 +39,7 @@ class BulkUserJobItemPublisher(
       .messageBody(objectMapper.writeValueAsString(message))
       .build()
 
-    bulkUserJobItemSqsClient.sendMessage(request)
+    bulkUserJobItemSqsClient.sendMessage(request).join()
     log.info("Published bulk user job item event: jobId={}, jobItemId={}", job.id, jobItem.id)
   }
 }

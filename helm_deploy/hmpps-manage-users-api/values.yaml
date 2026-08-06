@@ -98,9 +98,9 @@ generic-service:
     sqs-manage-users-bulk-user-job-dlq-secret:
       HMPPS_SQS_QUEUES_BULKUSERJOBQUEUE_DQL_NAME: "sqs_queue_name"
     sqs-manage-users-bulk-user-item-job-queue-secret:
-      HMPPS_SQS_QUEUES_BULKUSERJOBQUEUE_QUEUE_NAME: "sqs_queue_name"
+      HMPPS_SQS_QUEUES_BULKUSERJOBITEMQUEUE__QUEUE_NAME: "sqs_queue_name"
     sqs-manage-users-bulk-user-item-job-dlq-secret:
-      HMPPS_SQS_QUEUES_BULKUSERJOBQUEUE_DQL_NAME: "sqs_queue_name"  
+      HMPPS_SQS_QUEUES_BULKUSERJOBITEMQUEUE__DQL_NAME: "sqs_queue_name"  
     
     rds-instance-output:
       DATABASE_ENDPOINT: "rds_instance_endpoint"
