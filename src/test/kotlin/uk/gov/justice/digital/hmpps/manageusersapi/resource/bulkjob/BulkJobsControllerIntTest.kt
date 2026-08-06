@@ -3,6 +3,7 @@ package uk.gov.justice.digital.hmpps.manageusersapi.resource.bulkjob
 import jakarta.transaction.Transactional
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.within
+import org.awaitility.kotlin.await
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -26,7 +27,6 @@ import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJob
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItem
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItemStatus
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobStatus
-import uk.gov.justice.hmpps.sqs.HmppsQueue
 import uk.gov.justice.hmpps.sqs.HmppsQueueService
 import uk.gov.justice.hmpps.sqs.countAllMessagesOnQueue
 import java.time.LocalDateTime
@@ -44,7 +44,7 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
   @Autowired
   protected lateinit var hmppsQueueService: HmppsQueueService
 
-  internal val auditQueue by lazy { hmppsQueueService.findByQueueId("bulkuserjobqueue") as HmppsQueue }
+  internal val itemQueue by lazy { hmppsQueueService.findByQueueId("bulkuserjobitemqueue")!! }
 
   companion object {
     @JvmStatic
@@ -137,6 +137,10 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
         .responseBody.blockFirst()
 
       assertThat(response).isNotNull
+      await.untilAsserted {
+        assertThat(itemQueue.sqsClient.countAllMessagesOnQueue(itemQueue.queueUrl).get()).isEqualTo(4)
+      }
+
       val bulkJob = bulkUserJobRepository.findById(response!!.id)
       assertThat(bulkJob).isPresent.hasValueSatisfying {
         assertThat(it).usingRecursiveComparison().ignoringFields("jobItems", "requestDateTime").isEqualTo(
@@ -144,13 +148,12 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
         )
         assertThat(it.requestDateTime).isCloseTo(LocalDateTime.now(ZoneId.systemDefault()), within(5, SECONDS))
         assertThat(it.jobItems).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
-          BulkUserJobItem(username = "USER123", rolename = "ROLE_ONE", status = BulkUserJobItemStatus.CREATED, bulkUserJob = it),
-          BulkUserJobItem(username = "USER654", rolename = "ROLE_ONE", status = BulkUserJobItemStatus.CREATED, bulkUserJob = it),
-          BulkUserJobItem(username = "USER123", rolename = "ROLE_FOUR", status = BulkUserJobItemStatus.CREATED, bulkUserJob = it),
-          BulkUserJobItem(username = "USER654", rolename = "ROLE_FOUR", status = BulkUserJobItemStatus.CREATED, bulkUserJob = it),
+          BulkUserJobItem(username = "USER123", rolename = "ROLE_ONE", status = BulkUserJobItemStatus.PUBLISHED, bulkUserJob = it),
+          BulkUserJobItem(username = "USER654", rolename = "ROLE_ONE", status = BulkUserJobItemStatus.PUBLISHED, bulkUserJob = it),
+          BulkUserJobItem(username = "USER123", rolename = "ROLE_FOUR", status = BulkUserJobItemStatus.PUBLISHED, bulkUserJob = it),
+          BulkUserJobItem(username = "USER654", rolename = "ROLE_FOUR", status = BulkUserJobItemStatus.PUBLISHED, bulkUserJob = it),
         )
       }
-      assertThat(auditQueue.sqsClient.countAllMessagesOnQueue(auditQueue.queueUrl).get()).isEqualTo(1)
     }
 
     private fun buildValidMultipart(): BodyInserters.MultipartInserter = MultipartBuilder().usersCsv().bulkJobDetailsJson().build()

@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJob
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobDetails
+import java.util.Optional
 import java.util.UUID
 
 @Repository
@@ -18,6 +19,16 @@ interface BulkUserJobRepository : JpaRepository<BulkUserJob, UUID> {
     requestedBy: String,
     pageable: Pageable,
   ): Page<BulkUserJob>
+
+  @Query(
+    """
+      SELECT j
+      FROM BulkUserJob j
+        LEFT JOIN FETCH j.jobItems
+      WHERE j.id = :jobId
+    """,
+  )
+  fun findWithJobItemsById(@Param("jobId") jobId: UUID): Optional<BulkUserJob>
 
   @Query(
     """

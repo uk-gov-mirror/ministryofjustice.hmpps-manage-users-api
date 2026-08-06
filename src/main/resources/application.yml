@@ -171,3 +171,5 @@ hmpps:
     queues:
       bulkuserjobqueue:
         asyncQueueClient: true
+      bulkuserjobitemqueue:
+        asyncQueueClient: true

@@ -89,3 +89,7 @@ hmpps:
         queueName: ${random.uuid}
         asyncQueueClient: true
         dlqName: ${random.uuid}
+      bulkuserjobitemqueue:
+        queueName: ${random.uuid}
+        asyncQueueClient: true
+        dlqName: ${random.uuid}

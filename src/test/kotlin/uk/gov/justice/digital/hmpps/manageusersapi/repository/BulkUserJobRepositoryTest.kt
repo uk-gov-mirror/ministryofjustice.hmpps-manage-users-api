@@ -174,6 +174,50 @@ class BulkUserJobRepositoryTest {
   }
 
   @Nested
+  inner class FindWithJobItemsById {
+
+    @Test
+    fun `should return job with job items when id exists`() {
+      val job = BulkUserJob(
+        id = UUID.fromString("55555555-5555-5555-5555-555555555555"),
+        status = BulkUserJobStatus.PENDING,
+        jiraReference = "JKL-123",
+        requestedBy = "Test",
+        requestDateTime = requestTime.plusHours(3),
+      )
+      job.jobItems.add(
+        BulkUserJobItem(
+          username = "user1",
+          rolename = "role1",
+          status = BulkUserJobItemStatus.CREATED,
+          bulkUserJob = job,
+        ),
+      )
+      job.jobItems.add(
+        BulkUserJobItem(
+          username = "user2",
+          rolename = "role2",
+          status = BulkUserJobItemStatus.PUBLISHED,
+          bulkUserJob = job,
+        ),
+      )
+      bulkUserJobRepository.save(job)
+
+      val actual = bulkUserJobRepository.findWithJobItemsById(job.id)
+
+      assertThat(actual).isPresent
+      assertThat(actual.get()).usingRecursiveComparison().ignoringFields("jobItems").isEqualTo(job)
+      assertThat(actual.get().jobItems).usingRecursiveFieldByFieldElementComparatorIgnoringFields("bulkUserJob")
+        .containsExactlyInAnyOrderElementsOf(job.jobItems)
+    }
+
+    @Test
+    fun `should return empty when id does not exist`() {
+      assertThat(bulkUserJobRepository.findWithJobItemsById(UUID.randomUUID())).isEmpty
+    }
+  }
+
+  @Nested
   inner class FindDetailsById {
 
     @Test
