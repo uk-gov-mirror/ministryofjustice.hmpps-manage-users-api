@@ -27,6 +27,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import org.springframework.web.reactive.resource.NoResourceFoundException
 import uk.gov.justice.digital.hmpps.manageusersapi.adapter.nomis.UserExistsException
 import uk.gov.justice.digital.hmpps.manageusersapi.service.EntityNotFoundException
+import uk.gov.justice.digital.hmpps.manageusersapi.service.bulkjob.BulkUserJobNotCompleteException
 import uk.gov.justice.digital.hmpps.manageusersapi.service.external.EmailException
 import uk.gov.justice.digital.hmpps.manageusersapi.service.external.ValidEmailException
 import uk.gov.justice.digital.hmpps.manageusersapi.service.prison.HmppsValidationException
@@ -228,6 +229,22 @@ class HmppsManageUsersApiExceptionHandler {
         ),
       )
   }
+
+  @ExceptionHandler(BulkUserJobNotCompleteException::class)
+  fun handleBulkUserJobNotCompleteException(e: BulkUserJobNotCompleteException): ResponseEntity<ErrorResponse> {
+    log.debug("Bad Request (400): ", e)
+    return ResponseEntity
+      .status(BAD_REQUEST)
+      .contentType(APPLICATION_JSON)
+      .body(
+        ErrorResponse(
+          status = BAD_REQUEST.value(),
+          userMessage = e.message,
+          developerMessage = e.message,
+        ),
+      )
+  }
+
 
   companion object {
     private val log = LoggerFactory.getLogger(this::class.java)

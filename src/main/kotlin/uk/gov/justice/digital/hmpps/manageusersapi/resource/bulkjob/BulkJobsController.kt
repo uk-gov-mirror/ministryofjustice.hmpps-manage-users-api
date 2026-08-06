@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
-import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.GroupSequence
 import jakarta.validation.ValidationException
 import jakarta.validation.constraints.NotBlank
@@ -25,11 +24,13 @@ import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobDetails
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobStatus
 import uk.gov.justice.digital.hmpps.manageusersapi.resource.swagger.AcceptedApiResponses
 import uk.gov.justice.digital.hmpps.manageusersapi.resource.swagger.StandardApiResponses
 import uk.gov.justice.digital.hmpps.manageusersapi.service.bulkjob.BulkUserJobService
+import java.io.OutputStreamWriter
 import java.time.LocalDateTime
 import java.util.UUID
 
@@ -103,16 +104,16 @@ class BulkJobsController(private val bulkUserJobService: BulkUserJobService) {
     description = "Returns a bulk user role additions job details.",
   )
   @StandardApiResponses
-  fun getUserRoleAdditionsCsvDownload(
-    @PathVariable("id") id: UUID,
-    response: HttpServletResponse,
-  ): ResponseEntity<BulkUserRolesAdditionsDetails>  {
-    response.contentType = "text/csv"
-    response.setHeader("Content-Disposition", "attachment; filename=bulk-roles-assignments-${id}.csv")
-    response.writer.use { writer ->
-
+  fun getUserRoleAdditionsCsvDownload(@PathVariable("id") id: UUID): ResponseEntity<StreamingResponseBody> {
+    val body = StreamingResponseBody { outputStream ->
+      OutputStreamWriter(outputStream).use { writer ->
+        bulkUserJobService.writeJobResultsToCsv(writer, id)
+      }
     }
-    return ResponseEntity.noContent().build()
+    return ResponseEntity.ok()
+      .contentType(MediaType.parseMediaType("text/csv"))
+      .header("Content-Disposition", "attachment; filename=bulk-roles-assignments-${id}.csv")
+      .body(body)
   }
 
   private fun validateCsvFile(file: MultipartFile) {

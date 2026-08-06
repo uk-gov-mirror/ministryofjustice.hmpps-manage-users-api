@@ -18,9 +18,13 @@ import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.http.client.MultipartBodyBuilder
+import org.springframework.test.web.reactive.server.EntityExchangeResult
+import org.springframework.test.web.reactive.server.WebTestClient
+import org.springframework.test.web.reactive.server.expectBody
 import org.springframework.web.reactive.function.BodyInserters
 import uk.gov.justice.digital.hmpps.manageusersapi.config.SqsConfig
 import uk.gov.justice.digital.hmpps.manageusersapi.integration.IntegrationTestBase
+import uk.gov.justice.digital.hmpps.manageusersapi.repository.BulkUserJobItemRepository
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.BulkUserJobRepository
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJob
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItem
@@ -40,6 +44,9 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
 
   @Autowired
   private lateinit var bulkUserJobRepository: BulkUserJobRepository
+
+  @Autowired
+  private lateinit var bulkUserJobItemRepository: BulkUserJobItemRepository
 
   @Autowired
   protected lateinit var hmppsQueueService: HmppsQueueService
@@ -443,6 +450,184 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
         .jsonPath("$.successCount").isEqualTo(0)
         .jsonPath("$.errorCount").isEqualTo(0)
     }
+  }
+
+  @Nested
+  inner class GetBulkUserJobAdditionsCsvDownload {
+    private val requestTime = LocalDateTime.parse("2026-06-01T11:11:11")
+
+    private val job = BulkUserJob(
+      id = UUID.fromString("33333333-3333-3333-3333-333333333333"),
+      status = BulkUserJobStatus.COMPLETE,
+      jiraReference = "GHI-789",
+      requestedBy = "Test",
+      requestDateTime = requestTime,
+    )
+
+    @BeforeEach
+    fun setUp() {
+      bulkUserJobItemRepository.deleteAll()
+      bulkUserJobRepository.deleteAll()
+    }
+
+    @AfterEach
+    fun tearDown() {
+      bulkUserJobItemRepository.deleteAll()
+      bulkUserJobRepository.deleteAll()
+    }
+
+    @Test
+    fun `access forbidden when no authority`() {
+      webTestClient.get()
+        .uri("/bulk-jobs/user-role-additions/${UUID.randomUUID()}/download")
+        .exchange()
+        .expectStatus().isUnauthorized
+    }
+
+    @Test
+    fun `access forbidden when no role`() {
+      webTestClient.get()
+        .uri("/bulk-jobs/user-role-additions/${UUID.randomUUID()}/download")
+        .headers(setAuthorisation(roles = listOf()))
+        .exchange()
+        .expectStatus().isForbidden
+    }
+
+    @Test
+    fun `access forbidden when wrong role`() {
+      webTestClient.get().uri("/bulk-jobs/user-role-additions/${UUID.randomUUID()}/download")
+        .headers(setAuthorisation(roles = listOf("ROLE_AUDIT")))
+        .exchange()
+        .expectStatus().isForbidden
+    }
+
+    @Test
+    fun `should download a csv when job is complete and all items are successful`() {
+      job.addItemWithStatus(1, BulkUserJobItemStatus.SUCCESS)
+      job.addItemWithStatus(2, BulkUserJobItemStatus.SUCCESS)
+      job.addItemWithStatus(3, BulkUserJobItemStatus.SUCCESS)
+
+      bulkUserJobRepository.saveAndFlush(job)
+
+      val actual: EntityExchangeResult<String> = webTestClient.downloadBulkJobAdditionsCsv(job.id)
+
+      assertThat(actual).isNotNull
+      assertThat(actual.responseBody).isNotNull
+
+      val rows = actual.toCsvRows()
+
+      assertThat(rows).hasSize(4)
+      assertThat(rows[0]).isEqualTo("userId,roleCode,status,reason")
+      assertThat(rows[1]).isEqualTo("user_1,role_1,SUCCESS,")
+      assertThat(rows[2]).isEqualTo("user_2,role_2,SUCCESS,")
+      assertThat(rows[3]).isEqualTo("user_3,role_3,SUCCESS,")
+    }
+
+    @Test
+    fun `should download a csv when job is complete and all items are error`() {
+      job.addItemWithStatus(1, BulkUserJobItemStatus.ERROR)
+      job.addItemWithStatus(2, BulkUserJobItemStatus.ERROR)
+      job.addItemWithStatus(3, BulkUserJobItemStatus.ERROR)
+
+      bulkUserJobRepository.saveAndFlush(job)
+
+      val actual: EntityExchangeResult<String> = webTestClient.downloadBulkJobAdditionsCsv(job.id)
+
+      assertThat(actual).isNotNull
+      assertThat(actual.responseBody).isNotNull
+
+      val rows = actual.toCsvRows()
+      assertThat(rows).hasSize(4)
+      assertThat(rows[0]).isEqualTo("userId,roleCode,status,reason")
+      assertThat(rows[1]).isEqualTo("user_1,role_1,ERROR,error_desc_1")
+      assertThat(rows[2]).isEqualTo("user_2,role_2,ERROR,error_desc_2")
+      assertThat(rows[3]).isEqualTo("user_3,role_3,ERROR,error_desc_3")
+    }
+
+    @Test
+    fun `should download a csv when job is complete and items are success and error`() {
+      job.addItemWithStatus(1, BulkUserJobItemStatus.ERROR)
+      job.addItemWithStatus(2, BulkUserJobItemStatus.SUCCESS)
+      job.addItemWithStatus(3, BulkUserJobItemStatus.ERROR)
+
+      bulkUserJobRepository.saveAndFlush(job)
+
+      val actual: EntityExchangeResult<String> = webTestClient.downloadBulkJobAdditionsCsv(job.id)
+
+      assertThat(actual).isNotNull
+      assertThat(actual.responseBody).isNotNull
+
+      val rows = actual.toCsvRows()
+      assertThat(rows).hasSize(4)
+      assertThat(rows[0]).isEqualTo("userId,roleCode,status,reason")
+      assertThat(rows[1]).isEqualTo("user_1,role_1,ERROR,error_desc_1")
+      assertThat(rows[2]).isEqualTo("user_2,role_2,SUCCESS,")
+      assertThat(rows[3]).isEqualTo("user_3,role_3,ERROR,error_desc_3")
+    }
+
+    @Test
+    fun `should download a csv with header only when job has no items`() {
+      bulkUserJobRepository.saveAndFlush(job)
+
+      val actual: EntityExchangeResult<String> = webTestClient.downloadBulkJobAdditionsCsv(job.id)
+
+      assertThat(actual).isNotNull
+      assertThat(actual.responseBody).isNotNull
+
+      val rows = actual.toCsvRows()
+      assertThat(rows).hasSize(1)
+      assertThat(rows[0]).isEqualTo("userId,roleCode,status,reason")
+    }
+
+    @Test
+    fun `should return status 400 when bulk user additions job is not complete`() {
+      val job = BulkUserJob(
+        id = UUID.fromString("33333333-3333-3333-3333-333333333333"),
+        status = BulkUserJobStatus.PENDING,
+        jiraReference = "GHI-789",
+        requestedBy = "Test",
+        requestDateTime = requestTime,
+      )
+
+      bulkUserJobRepository.saveAndFlush(job)
+
+      webTestClient.get()
+        .uri("/bulk-jobs/user-role-additions/${job.id}/download")
+        .headers(setAuthorisation(user = "TEST_USR", roles = listOf("ROLE_MANAGE_USER_BULK_JOBS")))
+        .exchange()
+        .expectStatus().isBadRequest
+        .expectBody()
+        .jsonPath("$.status").isEqualTo(400)
+        .jsonPath("$.userMessage").isEqualTo("unable to generate bulk user download csv: job ${job.id} is not complete")
+    }
+
+    private fun WebTestClient.downloadBulkJobAdditionsCsv(id: UUID): EntityExchangeResult<String> = this.get()
+      .uri("/bulk-jobs/user-role-additions/$id/download")
+      .headers(setAuthorisation(user = "TEST_USR", roles = listOf("ROLE_MANAGE_USER_BULK_JOBS")))
+      .exchange()
+      .expectStatus().isOk
+      .expectHeader()
+      .contentTypeCompatibleWith("text/csv")
+      .expectHeader()
+      .valueEquals("Content-Disposition", "attachment; filename=bulk-roles-assignments-$id.csv")
+      .expectBody<String>()
+      .returnResult()
+
+    private fun BulkUserJob.addItemWithStatus(index: Int, status: BulkUserJobItemStatus) {
+      this.jobItems.add(
+        BulkUserJobItem(
+          username = "user_$index",
+          rolename = "role_$index",
+          status = status,
+          bulkUserJob = this,
+          result = if (status == BulkUserJobItemStatus.ERROR) "error_desc_$index" else null
+        ),
+      )
+    }
+
+    private fun EntityExchangeResult<String>.toCsvRows(): List<String> = this.responseBody!!
+      .trim()
+      .split("\n")
   }
 }
 

@@ -104,6 +104,6 @@ class BulkUserJobService(
   }
 }
 
-class BulkUserJobNotFoundException(id: UUID) : EntityNotFoundException("Bulk user job $id not found")
+class BulkUserJobNotFoundException(val id: UUID) : EntityNotFoundException("Bulk user job $id not found")
 
-class BulkUserJobNotCompleteException(id: UUID) : Exception("unable to generate bulk user download csv: job $id is not complete")
+class BulkUserJobNotCompleteException(val id: UUID) : Exception("unable to generate bulk user download csv: job $id is not complete")
