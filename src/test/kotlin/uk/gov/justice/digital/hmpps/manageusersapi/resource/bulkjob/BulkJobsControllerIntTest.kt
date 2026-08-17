@@ -34,6 +34,7 @@ import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJob
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItem
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobItemStatus
 import uk.gov.justice.digital.hmpps.manageusersapi.repository.model.BulkUserJobStatus
+import uk.gov.justice.digital.hmpps.manageusersapi.resource.PagedResponse
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit.SECONDS
@@ -272,10 +273,11 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
         .headers(setAuthorisation(user = "TEST_USR", roles = listOf("ROLE_MANAGE_USER_BULK_JOBS")))
         .exchange()
         .expectStatus().isOk
-        .returnResult(object : ParameterizedTypeReference<List<BulkUserRoleAdditionsJobSummary>>() {})
+        .returnResult(object : ParameterizedTypeReference<PagedResponse<BulkUserRoleAdditionsJobSummary>>() {})
         .responseBody.blockFirst()
 
-      assertThat(response).containsExactly(
+      assertThat(response).isNotNull
+      assertThat(response!!.content).containsExactly(
         BulkUserRoleAdditionsJobSummary(
           id = UUID.fromString("22222222-2222-2222-2222-222222222222"),
           jiraReference = "DEF-456",
@@ -291,6 +293,28 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
           requestDateTime = LocalDateTime.parse("2026-06-01T11:11:11"),
         ),
       )
+      assertThat(response.pageable).isNotNull
+      assertThat(response.pageable.sort).isNotNull
+      assertThat(response.pageable.sort.sorted).isTrue
+      assertThat(response.pageable.sort.unsorted).isFalse
+      assertThat(response.pageable.sort.empty).isFalse
+      assertThat(response.pageable.offset).isEqualTo(0)
+      assertThat(response.pageable.pageNumber).isEqualTo(0)
+      assertThat(response.pageable.pageSize).isEqualTo(0)
+      assertThat(response.pageable.paged).isFalse
+      assertThat(response.pageable.unpaged).isTrue
+      assertThat(response.last).isTrue
+      assertThat(response.totalPages).isEqualTo(1)
+      assertThat(response.totalElements).isEqualTo(2)
+      assertThat(response.size).isEqualTo(2)
+      assertThat(response.number).isEqualTo(0)
+      assertThat(response.sort).isNotNull
+      assertThat(response.sort.empty).isFalse
+      assertThat(response.sort.unsorted).isFalse
+      assertThat(response.sort.sorted).isTrue
+      assertThat(response.numberOfElements).isEqualTo(2)
+      assertThat(response.first).isTrue
+      assertThat(response.empty).isFalse
     }
 
     @Test
@@ -306,10 +330,11 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
         .headers(setAuthorisation(user = "TEST_USR", roles = listOf("ROLE_MANAGE_USER_BULK_JOBS")))
         .exchange()
         .expectStatus().isOk
-        .returnResult(object : ParameterizedTypeReference<List<BulkUserRoleAdditionsJobSummary>>() {})
+        .returnResult(object : ParameterizedTypeReference<PagedResponse<BulkUserRoleAdditionsJobSummary>>() {})
         .responseBody.blockFirst()
 
-      assertThat(response).containsExactly(
+      assertThat(response).isNotNull
+      assertThat(response!!.content).containsExactly(
         BulkUserRoleAdditionsJobSummary(
           id = UUID.fromString("11111111-1111-1111-1111-111111111111"),
           jiraReference = "ABC-123",
@@ -318,6 +343,28 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
           requestDateTime = LocalDateTime.parse("2026-06-01T11:11:11"),
         ),
       )
+      assertThat(response.pageable).isNotNull
+      assertThat(response.pageable.sort).isNotNull
+      assertThat(response.pageable.sort.sorted).isTrue
+      assertThat(response.pageable.sort.unsorted).isFalse
+      assertThat(response.pageable.sort.empty).isFalse
+      assertThat(response.pageable.offset).isEqualTo(2)
+      assertThat(response.pageable.pageNumber).isEqualTo(1)
+      assertThat(response.pageable.pageSize).isEqualTo(2)
+      assertThat(response.pageable.paged).isTrue
+      assertThat(response.pageable.unpaged).isFalse
+      assertThat(response.last).isTrue
+      assertThat(response.totalPages).isEqualTo(2)
+      assertThat(response.totalElements).isEqualTo(3)
+      assertThat(response.size).isEqualTo(2)
+      assertThat(response.number).isEqualTo(1)
+      assertThat(response.sort).isNotNull
+      assertThat(response.sort.empty).isFalse
+      assertThat(response.sort.unsorted).isFalse
+      assertThat(response.sort.sorted).isTrue
+      assertThat(response.numberOfElements).isEqualTo(1)
+      assertThat(response.first).isFalse
+      assertThat(response.empty).isFalse
     }
 
     @Test
@@ -329,10 +376,34 @@ class BulkJobsControllerIntTest : IntegrationTestBase() {
         .headers(setAuthorisation(user = "TEST_USR", roles = listOf("ROLE_MANAGE_USER_BULK_JOBS")))
         .exchange()
         .expectStatus().isOk
-        .returnResult(object : ParameterizedTypeReference<List<BulkUserRoleAdditionsJobSummary>>() {})
+        .returnResult(object : ParameterizedTypeReference<PagedResponse<BulkUserRoleAdditionsJobSummary>>() {})
         .responseBody.blockFirst()
 
-      assertThat(response).isEmpty()
+      assertThat(response).isNotNull
+      assertThat(response!!.content).isEmpty()
+
+      assertThat(response.pageable).isNotNull
+      assertThat(response.pageable.sort).isNotNull
+      assertThat(response.pageable.sort.sorted).isTrue
+      assertThat(response.pageable.sort.unsorted).isFalse
+      assertThat(response.pageable.sort.empty).isFalse
+      assertThat(response.pageable.offset).isEqualTo(0)
+      assertThat(response.pageable.pageNumber).isEqualTo(0)
+      assertThat(response.pageable.pageSize).isEqualTo(0)
+      assertThat(response.pageable.paged).isFalse
+      assertThat(response.pageable.unpaged).isTrue
+      assertThat(response.last).isTrue
+      assertThat(response.totalPages).isEqualTo(1)
+      assertThat(response.totalElements).isEqualTo(0)
+      assertThat(response.size).isEqualTo(0)
+      assertThat(response.number).isEqualTo(0)
+      assertThat(response.sort).isNotNull
+      assertThat(response.sort.empty).isFalse
+      assertThat(response.sort.unsorted).isFalse
+      assertThat(response.sort.sorted).isTrue
+      assertThat(response.numberOfElements).isEqualTo(0)
+      assertThat(response.first).isTrue
+      assertThat(response.empty).isTrue
     }
   }
 

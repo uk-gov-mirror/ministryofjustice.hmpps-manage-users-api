@@ -3,6 +3,7 @@ package uk.gov.justice.digital.hmpps.manageusersapi.service.bulkjob
 import jakarta.validation.ValidationException
 import org.apache.commons.csv.CSVFormat
 import org.apache.commons.csv.CSVRecord
+import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -39,8 +40,9 @@ class BulkUserJobService(
     return bulkJob.id
   }
 
-  fun getBulkUserRoleAdditionsJobs(search: String, pageNumber: Int?, pageSize: Int?): List<BulkUserJob> {
+  fun getBulkUserRoleAdditionsJobs(search: String, pageNumber: Int?, pageSize: Int?): Page<BulkUserJob> {
     var pagination = Pageable.unpaged(Sort.by("RequestDateTime").descending())
+
     if (pageNumber != null && pageSize != null) {
       pagination = PageRequest.of(pageNumber, pageSize, Sort.by("RequestDateTime").descending())
     }
@@ -49,7 +51,7 @@ class BulkUserJobService(
       jiraReference = search,
       requestedBy = search,
       pageable = pagination,
-    ).content
+    )
   }
 
   fun getBulkUserRoleAdditionsJobDetails(id: UUID): BulkUserJobDetails? = bulkUserJobRepository.findDetailsById(id)

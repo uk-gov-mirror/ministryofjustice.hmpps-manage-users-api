@@ -114,6 +114,8 @@ class BulkUserJobServiceTest {
       BulkUserJob(jiraReference = "DEF-456", requestedBy = "user2"),
     )
 
+    private val pageResult = PageImpl(jobs)
+
     @Test
     fun `Can get bulk user jobs with no search or pagination when no arguments are given`() {
       whenever(
@@ -133,7 +135,7 @@ class BulkUserJobServiceTest {
         "",
         Pageable.unpaged(Sort.by("RequestDateTime").descending()),
       )
-      assertThat(result).isEqualTo(jobs)
+      assertThat(result).isEqualTo(pageResult)
     }
 
     @Test
@@ -155,7 +157,7 @@ class BulkUserJobServiceTest {
         "test",
         Pageable.unpaged(Sort.by("RequestDateTime").descending()),
       )
-      assertThat(result).isEqualTo(jobs)
+      assertThat(result).isEqualTo(pageResult)
     }
 
     @Test
@@ -175,7 +177,7 @@ class BulkUserJobServiceTest {
         "",
         PageRequest.of(0, 1, Sort.by("RequestDateTime").descending()),
       )
-      assertThat(result).isEqualTo(jobs)
+      assertThat(result).isEqualTo(pageResult)
     }
 
     @Test
@@ -195,7 +197,7 @@ class BulkUserJobServiceTest {
         "test",
         PageRequest.of(0, 1, Sort.by("RequestDateTime").descending()),
       )
-      assertThat(result).isEqualTo(jobs)
+      assertThat(result).isEqualTo(pageResult)
     }
   }
 
