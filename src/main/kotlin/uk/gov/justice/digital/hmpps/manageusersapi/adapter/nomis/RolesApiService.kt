@@ -68,6 +68,14 @@ class RolesApiService(
     caseloadId,
   )
 
+  fun addRolesToUserAsSystem(username: String, roles: List<String>, caseloadId: String? = null) = serviceWebClientUtils.postWithResponse(
+    "/users/{username}/roles?caseloadId={caseloadId}",
+    roles,
+    UserRoleDetail::class.java,
+    username,
+    caseloadId,
+  )
+
   fun removeRoleFromUser(username: String, role: String, caseloadId: String? = null): UserRoleDetail = userWebClientUtils.deleteWithResponse(
     "/users/{username}/roles/{role}?caseloadId={caseloadId}",
     UserRoleDetail::class.java,

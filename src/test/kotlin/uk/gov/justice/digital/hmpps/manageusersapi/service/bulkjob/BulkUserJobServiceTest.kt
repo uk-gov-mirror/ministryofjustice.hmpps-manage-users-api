@@ -90,6 +90,37 @@ class BulkUserJobServiceTest {
         .hasMessage("Users csv does not contain any rows")
     }
 
+    @Test
+    fun `Bulk user role additions job skips the userId header row when present`() {
+      whenCreateBulkUserRoleAdditionsJobWithCsvContent("userId\nUSER123\nUSER456".toByteArray())
+
+      verify(bulkUserJobRepository).save(bulkUserJobCaptor.capture())
+      val bulkUserJob = bulkUserJobCaptor.firstValue
+      assertThat(bulkUserJob.jobItems).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id")
+        .containsExactlyInAnyOrder(
+          BulkUserJobItem(username = "USER123", rolename = "ROLE_ONE", status = CREATED, bulkUserJob = bulkUserJob),
+          BulkUserJobItem(username = "USER123", rolename = "ROLE_TWO", status = CREATED, bulkUserJob = bulkUserJob),
+          BulkUserJobItem(username = "USER456", rolename = "ROLE_ONE", status = CREATED, bulkUserJob = bulkUserJob),
+          BulkUserJobItem(username = "USER456", rolename = "ROLE_TWO", status = CREATED, bulkUserJob = bulkUserJob),
+        )
+    }
+
+    @Test
+    fun `Bulk user role additions ignores the userId header regardless of case`() {
+      whenCreateBulkUserRoleAdditionsJobWithCsvContent("USERID\nUSER123".toByteArray())
+
+      verify(bulkUserJobRepository).save(bulkUserJobCaptor.capture())
+      val bulkUserJob = bulkUserJobCaptor.firstValue
+      assertThat(bulkUserJob.jobItems.map { it.username }).containsOnly("USER123")
+    }
+
+    @Test
+    fun `Bulk user role additions validation error when only the header row is present`() {
+      assertThatThrownBy { whenCreateBulkUserRoleAdditionsJobWithCsvContent("userId".toByteArray()) }
+        .isInstanceOf(ValidationException::class.java)
+        .hasMessage("Users csv does not contain any rows")
+    }
+
     @ParameterizedTest
     @ValueSource(strings = ["USER123,USER456", "USER123\nUSER456,USER789"])
     fun `Bulk user role additions validation error when not exactly one column`(csvContent: String) {

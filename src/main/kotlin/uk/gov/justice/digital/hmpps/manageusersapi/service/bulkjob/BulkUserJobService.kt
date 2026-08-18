@@ -28,6 +28,10 @@ class BulkUserJobService(
   private val bulkUserJobItemRepository: BulkUserJobItemRepository,
   private val bulkJobPublisher: BulkJobPublisher,
 ) {
+  companion object {
+    private const val USER_ID_HEADER = "userId"
+  }
+
   @Transactional
   fun createBulkUserRoleAdditionsJob(
     usersCsv: MultipartFile,
@@ -90,7 +94,7 @@ class BulkUserJobService(
   }
 
   private fun parseFileForUsers(userCsv: MultipartFile): List<String> {
-    val users = userCsv.inputStream.bufferedReader().use { reader ->
+    val rows = userCsv.inputStream.bufferedReader().use { reader ->
       val csvFormat = CSVFormat.Builder.create().setTrim(true).build()
       csvFormat.parse(reader).map { record: CSVRecord ->
         if (record.size() != 1) {
@@ -99,10 +103,18 @@ class BulkUserJobService(
         record.first()
       }.toList()
     }
+
+    val users = rows.dropHeaderRowIfPresent()
     if (users.isEmpty()) {
       throw ValidationException("Users csv does not contain any rows")
     }
     return users
+  }
+
+  private fun List<String>.dropHeaderRowIfPresent(): List<String> = if (isNotEmpty() && first().equals(USER_ID_HEADER, ignoreCase = true)) {
+    drop(1)
+  } else {
+    this
   }
 }
 

@@ -32,7 +32,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
   fun `processes role assignment successfully`() {
     val (message, item) = createMessageAndItem()
     stubClaimAndLoad(item)
-    whenever(userRolesService.addRolesToUser(item.username, listOf(item.rolename), "NWEB")).thenReturn(createUserRoleDetail(item.username))
+    whenever(userRolesService.addRolesToUserAsSystem(item.username, listOf(item.rolename), "NWEB")).thenReturn(createUserRoleDetail(item.username))
     whenever(
       bulkUserJobItemRepository.updateStatusAndResultIfCurrent(
         item.id,
@@ -45,7 +45,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
 
     service.processRoleAssignmentMessage(message)
 
-    verify(userRolesService).addRolesToUser(item.username, listOf(item.rolename), "NWEB")
+    verify(userRolesService).addRolesToUserAsSystem(item.username, listOf(item.rolename), "NWEB")
     verify(bulkUserJobItemRepository).updateStatusAndResultIfCurrent(item.id, BulkUserJobItemStatus.STARTED, BulkUserJobItemStatus.SUCCESS, null, null)
     verify(bulkUserJobReconciliationService).reconcileBulkJob(item.bulkUserJob.id)
   }
@@ -66,7 +66,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
 
     service.processRoleAssignmentMessage(message)
 
-    verify(userRolesService, never()).addRolesToUser(any(), any(), any())
+    verify(userRolesService, never()).addRolesToUserAsSystem(any(), any(), any())
     verify(bulkUserJobReconciliationService, never()).reconcileBulkJob(any())
   }
 
@@ -78,7 +78,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
     service.processRoleAssignmentMessage(message)
 
     verify(bulkUserJobItemRepository, never()).updateStatusIfCurrent(any(), any(), any(), any())
-    verify(userRolesService, never()).addRolesToUser(any(), any(), any())
+    verify(userRolesService, never()).addRolesToUserAsSystem(any(), any(), any())
     verify(bulkUserJobReconciliationService, never()).reconcileBulkJob(any())
   }
 
@@ -95,7 +95,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
         null,
       ),
     ).thenReturn(0)
-    whenever(userRolesService.addRolesToUser(item.username, listOf(item.rolename), "NWEB")).thenReturn(createUserRoleDetail(item.username))
+    whenever(userRolesService.addRolesToUserAsSystem(item.username, listOf(item.rolename), "NWEB")).thenReturn(createUserRoleDetail(item.username))
     whenever(
       bulkUserJobItemRepository.updateStatusAndResultIfCurrent(
         item.id,
@@ -108,7 +108,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
 
     service.processRoleAssignmentMessage(message)
 
-    verify(userRolesService).addRolesToUser(item.username, listOf(item.rolename), "NWEB")
+    verify(userRolesService).addRolesToUserAsSystem(item.username, listOf(item.rolename), "NWEB")
     verify(bulkUserJobItemRepository).updateStatusAndResultIfCurrent(item.id, BulkUserJobItemStatus.STARTED, BulkUserJobItemStatus.SUCCESS, null, null)
     verify(bulkUserJobReconciliationService).reconcileBulkJob(item.bulkUserJob.id)
   }
@@ -117,7 +117,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
   fun `marks error when user is not found during role assignment`() {
     val (message, item) = createMessageAndItem()
     stubClaimAndLoad(item)
-    whenever(userRolesService.addRolesToUser(item.username, listOf(item.rolename), "NWEB")).thenThrow(notFoundException())
+    whenever(userRolesService.addRolesToUserAsSystem(item.username, listOf(item.rolename), "NWEB")).thenThrow(notFoundException())
     whenever(
       bulkUserJobItemRepository.updateStatusAndResultIfCurrent(
         item.id,
@@ -138,7 +138,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
   fun `marks success when role is already assigned`() {
     val (message, item) = createMessageAndItem()
     stubClaimAndLoad(item)
-    whenever(userRolesService.addRolesToUser(item.username, listOf(item.rolename), "NWEB")).thenThrow(conflictException())
+    whenever(userRolesService.addRolesToUserAsSystem(item.username, listOf(item.rolename), "NWEB")).thenThrow(conflictException())
     whenever(
       bulkUserJobItemRepository.updateStatusAndResultIfCurrent(
         item.id,
@@ -165,7 +165,7 @@ class BulkUserJobItemRoleAssignmentServiceTest {
   fun `marks system issue when assignment fails`() {
     val (message, item) = createMessageAndItem()
     stubClaimAndLoad(item)
-    whenever(userRolesService.addRolesToUser(item.username, listOf(item.rolename), "NWEB")).thenThrow(RuntimeException("boom"))
+    whenever(userRolesService.addRolesToUserAsSystem(item.username, listOf(item.rolename), "NWEB")).thenThrow(RuntimeException("boom"))
     whenever(
       bulkUserJobItemRepository.updateStatusAndResultIfCurrent(
         item.id,

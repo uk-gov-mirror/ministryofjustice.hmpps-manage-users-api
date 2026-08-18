@@ -49,7 +49,7 @@ class BulkUserJobItemRoleAssignmentService(
     val roleCode = item.rolename.uppercase()
 
     try {
-      userRolesService.addRolesToUser(username, listOf(roleCode), DPS_CASELOAD)
+      userRolesService.addRolesToUserAsSystem(username, listOf(roleCode), DPS_CASELOAD)
       markSuccess(item.id)
       bulkUserJobReconciliationService.reconcileBulkJob(item.bulkUserJob.id)
     } catch (e: WebClientResponseException.NotFound) {

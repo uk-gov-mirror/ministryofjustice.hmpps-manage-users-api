@@ -116,6 +116,17 @@ class UserRolesServiceTest {
       verify(prisonRolesApiService).addRolesToUser(prisonUserRoleDetail.username, listOf("ROLE_3", "ROLE_4"), "NWEB")
       assertThat(details).isEqualTo(prisonUserRoleDetail)
     }
+
+    @Test
+    fun `calls addRolesToUserAsSystem api`() {
+      val prisonUserRoleDetail = createPrisonUserRoleDetails()
+      whenever(prisonRolesApiService.addRolesToUserAsSystem(any(), any(), any())).thenReturn(prisonUserRoleDetail)
+
+      val details = userRolesService.addRolesToUserAsSystem(prisonUserRoleDetail.username, listOf("ROLE_3", "ROLE_4"), "NWEB")
+
+      verify(prisonRolesApiService).addRolesToUserAsSystem(prisonUserRoleDetail.username, listOf("ROLE_3", "ROLE_4"), "NWEB")
+      assertThat(details).isEqualTo(prisonUserRoleDetail)
+    }
   }
 
   @Nested
