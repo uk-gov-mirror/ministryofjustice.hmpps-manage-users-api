@@ -1,5 +1,6 @@
 package uk.gov.justice.digital.hmpps.manageusersapi.resource
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -10,12 +11,18 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
+import jakarta.validation.ValidationException
+import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.Size
+import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
@@ -199,6 +206,33 @@ class UserController(
   ): List<UserRole> = userService.findRolesByUsername(username)
     ?: throw NotFoundException("Account for username $username not found")
 
+  @PostMapping("/users/has-role")
+  @Operation(
+    summary = "Check whether each user in a list has the IMS_USER role, one page at a time",
+    description = "Takes up to 50 usernames in the request body and returns one page of results, " +
+      "saying whether each user on the page has the IMS_USER role. Only the users on the requested page are looked up. " +
+      "To read every result, send the same list with page=0, 1, 2 and so on until the response has last=true. <br/><br/>" +
+      "Duplicate usernames are removed before paging, and results keep the order the usernames were given in. " +
+      "A username that is not found comes back with hasRole false <br/><br/>" +
+      "Uses the same lookup as GET /users/{username}/roles: external users, then NOMIS, then AZURE, then Delius. " +
+      "Requires role ROLE_INTEL_ADMIN.",
+    security = [SecurityRequirement(name = "ROLE_INTEL_ADMIN")],
+  )
+  @StandardApiResponses
+  @Parameter(name = "page", description = "The page to return, starting at 0.", required = false, example = "0")
+  @Parameter(name = "size", description = "Usernames per page, from 1 to 50", required = false, example = "10")
+  @PreAuthorize("hasAnyRole('ROLE_INTEL_ADMIN')")
+  fun usersHaveIMSRole(
+    @Valid @RequestBody request: UsersHaveRoleRequest,
+    @RequestParam(value = "page", defaultValue = "0", required = false) page: Int,
+    @RequestParam(value = "size", defaultValue = "10", required = false) size: Int,
+  ): PagedResponse<UserHasRoleResponse> {
+    if (page < 0) throw ValidationException("Page must not be negative")
+    if (size !in 1..50) throw ValidationException("size must be between 1 and 50")
+
+    return userService.usersHaveIMSRole(request.usernames, PageRequest.of(page, size)).toPagedResponse()
+  }
+
   @GetMapping("/roles/delius")
   @Operation(
     summary = "List of mapped delius roles",
@@ -268,6 +302,27 @@ data class UsernameDto(
   override val username: String,
   override val authSource: AuthSource,
 ) : User
+
+@Schema(description = "Usernames to check for the IMS_USER role")
+data class UsersHaveRoleRequest(
+  @Schema(requiredMode = REQUIRED, description = "Usernames, between 1 and 50", example = "[\"JON\", \"SMITH\"]")
+  @field:NotEmpty
+  @field:Size(max = 50)
+  val usernames: List<String>,
+) {
+  @get:JsonIgnore
+  @get:AssertTrue(message = "Usernames must not contain blank values")
+  val isEveryUsernamePresent: Boolean
+    get() = usernames.none { it.isBlank() }
+}
+
+@Schema(description = "Whether one user has the IMS_USER role")
+data class UserHasRoleResponse(
+  @Schema(description = "Username as requested", example = "JON SMITH")
+  val username: String,
+  @Schema(description = "True when the user has the IMS_USER role, false when they don't or weren't found", example = "true")
+  val hasRole: Boolean,
+)
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(description = "User email details")

@@ -90,10 +90,18 @@ class UserApiService(
 
   fun findUserByUsername(username: String): PrisonUser? {
     if ("@" in username) {
-      log.debug("Nomis not called with username as contained @: {}", username)
+      log.info("Nomis not called with username as contained @: {}", username)
       return null
     }
     return serviceWebClientUtils.getIgnoreError("/users/{username}", PrisonUser::class.java, username.uppercase())
+  }
+
+  fun findUserByUsernameIfPresent(username: String): PrisonUser? {
+    if ("@" in username) {
+      log.info("Nomis not called with username as contained @: {}", username)
+      return null
+    }
+    return serviceWebClientUtils.getIfPresent("/users/{username}", PrisonUser::class.java, username.uppercase())
   }
 
   fun findUserBasicDetailsByUsername(username: String): PrisonUserBasicDetails? {

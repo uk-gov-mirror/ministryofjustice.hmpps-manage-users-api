@@ -1,14 +1,19 @@
 package uk.gov.justice.digital.hmpps.manageusersapi.service
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
+import org.springframework.data.domain.PageRequest
+import org.springframework.http.HttpHeaders
 import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.web.reactive.function.client.WebClientResponseException
 import uk.gov.justice.digital.hmpps.manageusersapi.adapter.auth.AuthApiService
 import uk.gov.justice.digital.hmpps.manageusersapi.adapter.delius.UserApiService
 import uk.gov.justice.digital.hmpps.manageusersapi.adapter.external.UserRolesApiService
@@ -28,6 +33,7 @@ import uk.gov.justice.digital.hmpps.manageusersapi.model.ExternalUser
 import uk.gov.justice.digital.hmpps.manageusersapi.model.PrisonCaseload
 import uk.gov.justice.digital.hmpps.manageusersapi.model.UserCaseloadDetail
 import uk.gov.justice.digital.hmpps.manageusersapi.model.UserGroup
+import uk.gov.justice.digital.hmpps.manageusersapi.resource.UserHasRoleResponse
 import uk.gov.justice.digital.hmpps.manageusersapi.resource.UserRole
 import uk.gov.justice.digital.hmpps.manageusersapi.resource.external.UserGroupDto
 import uk.gov.justice.digital.hmpps.manageusersapi.resource.prison.UsageType
@@ -283,6 +289,77 @@ class UserServiceTest {
       assertThat(userRoleList).isEqualTo(listOf(UserRole(roleCode = "AUDIT_VIEWER"), UserRole(roleCode = "AUTH_GROUP_MANAGER")))
       verifyNoInteractions(prisonUserApiService)
       verifyNoInteractions(deliusUserApiService)
+    }
+
+    @Test
+    fun `usersHaveIMSRole says whether each user has IMS_USER, in the order given`() {
+      val imsRoles = listOf(UserRoleResponse(roleCode = "IMS_USER", roleName = "IMS user"))
+      whenever(externalRolesApiService.findRolesByUsernameIfPresent("ims_user")).thenReturn(imsRoles)
+      whenever(externalRolesApiService.findRolesByUsernameIfPresent("nuser_gen")).thenReturn(null)
+      whenever(prisonUserApiService.findUserByUsernameIfPresent("nuser_gen")).thenReturn(createPrisonUserDetails())
+
+      val results = userService.usersHaveIMSRole(listOf("ims_user", "nuser_gen"), PageRequest.of(0, 10))
+
+      assertThat(results.content).containsExactly(
+        UserHasRoleResponse("ims_user", true),
+        UserHasRoleResponse("nuser_gen", false),
+      )
+    }
+
+    @Test
+    fun `usersHaveIMSRole returns false when the user is not found`() {
+      whenever(externalRolesApiService.findRolesByUsernameIfPresent(anyString())).thenReturn(null)
+      whenever(prisonUserApiService.findUserByUsernameIfPresent(anyString())).thenReturn(null)
+      whenever(authApiService.findAzureUserByUsernameIfPresent(anyString())).thenReturn(null)
+      whenever(deliusUserApiService.findUserByUsernameIfPresent(anyString())).thenReturn(null)
+
+      val results = userService.usersHaveIMSRole(listOf("unknown_user"), PageRequest.of(0, 10))
+
+      assertThat(results.content).containsExactly(UserHasRoleResponse("unknown_user", false))
+    }
+
+    @Test
+    fun `usersHaveIMSRole looks up a repeated username once`() {
+      whenever(externalRolesApiService.findRolesByUsernameIfPresent("external_user")).thenReturn(createRolesList())
+
+      val results = userService.usersHaveIMSRole(listOf("external_user", "external_user"), PageRequest.of(0, 10))
+
+      assertThat(results.content).containsExactly(UserHasRoleResponse("external_user", false))
+      assertThat(results.totalElements).isEqualTo(1)
+      verify(externalRolesApiService, times(1)).findRolesByUsernameIfPresent("external_user")
+    }
+
+    @Test
+    fun `usersHaveIMSRole only looks up the users on the requested page`() {
+      whenever(externalRolesApiService.findRolesByUsernameIfPresent(anyString())).thenReturn(createRolesList())
+
+      val results = userService.usersHaveIMSRole(listOf("user_a", "user_b", "user_c", "user_d", "user_e"), PageRequest.of(1, 2))
+
+      assertThat(results.content.map { it.username }).containsExactly("user_c", "user_d")
+      assertThat(results.totalElements).isEqualTo(5)
+      assertThat(results.totalPages).isEqualTo(3)
+      verify(externalRolesApiService).findRolesByUsernameIfPresent("user_c")
+      verify(externalRolesApiService).findRolesByUsernameIfPresent("user_d")
+      verify(externalRolesApiService, times(2)).findRolesByUsernameIfPresent(anyString())
+    }
+
+    @Test
+    fun `usersHaveIMSRole returns an empty page past the end of the list`() {
+      val results = userService.usersHaveIMSRole(listOf("user_a", "user_b"), PageRequest.of(5, 10))
+
+      assertThat(results.content).isEmpty()
+      assertThat(results.totalElements).isEqualTo(2)
+      verifyNoInteractions(externalRolesApiService)
+    }
+
+    @Test
+    fun `usersHaveIMSRole fails rather than returning false when an upstream lookup errors`() {
+      whenever(externalRolesApiService.findRolesByUsernameIfPresent("ims_user"))
+        .thenThrow(WebClientResponseException.create(503, "Service unavailable", HttpHeaders.EMPTY, ByteArray(0), null))
+
+      assertThatThrownBy { userService.usersHaveIMSRole(listOf("ims_user"), PageRequest.of(0, 10)) }
+        .isInstanceOf(WebClientResponseException.ServiceUnavailable::class.java)
+      verifyNoInteractions(prisonUserApiService)
     }
   }
 

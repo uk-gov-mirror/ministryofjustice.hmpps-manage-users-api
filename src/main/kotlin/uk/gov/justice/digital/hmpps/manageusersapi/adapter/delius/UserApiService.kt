@@ -29,6 +29,15 @@ class UserApiService(
       ?.let { user -> mapUserDetailsToDeliusUser(user) }
   }
 
+  fun findUserByUsernameIfPresent(username: String): DeliusUser? {
+    if ("@" in username) {
+      log.debug("Delius not called with username as contained @: {}", username)
+      return null
+    }
+    return serviceWebClientUtils.getIfPresent("/user/{username}", DeliusUser::class.java, username)
+      ?.let { user -> mapUserDetailsToDeliusUser(user) }
+  }
+
   private fun mapUserDetailsToDeliusUser(userDetails: DeliusUser) = DeliusUser(
     username = userDetails.username.uppercase(),
     userId = userDetails.userId,

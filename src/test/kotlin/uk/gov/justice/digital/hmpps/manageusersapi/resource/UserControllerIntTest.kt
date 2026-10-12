@@ -1,6 +1,8 @@
 package uk.gov.justice.digital.hmpps.manageusersapi.resource
 
+import com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import com.github.tomakehurst.wiremock.client.WireMock.equalTo
+import com.github.tomakehurst.wiremock.client.WireMock.get
 import com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor
 import com.github.tomakehurst.wiremock.client.WireMock.matching
 import com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor
@@ -777,6 +779,113 @@ class UserControllerIntTest : IntegrationTestBase() {
           assertThat(it["field"]).isEqualTo("username")
         }
       hmppsAuthMockServer.verify(0, getRequestedFor(urlEqualTo("/auth/api/azureuser/$username")))
+    }
+
+    @Test
+    fun `says whether each user has IMS_USER, in the order given`() {
+      externalUsersApiMockServer.stubFor(
+        get(urlEqualTo("/users/username/IMS_USER1/roles")).willReturn(
+          aResponse()
+            .withHeader("Content-Type", "application/json")
+            .withBody("""[{ "roleCode": "IMS_USER", "roleName": "IMS user" }]"""),
+        ),
+      )
+      externalUsersApiMockServer.stubGetSearchableRoles("/users/username/EXT_ADM/roles")
+      externalUsersApiMockServer.stubGetFail("/users/username/AUTH_ADM/roles", NOT_FOUND)
+      nomisApiMockServer.stubGetFail("/users/AUTH_ADM", NOT_FOUND)
+      deliusApiMockServer.stubGetFail("/user/AUTH_ADM", NOT_FOUND)
+
+      webTestClient.post().uri("/users/has-role")
+        .headers(setAuthorisation(roles = listOf("ROLE_INTEL_ADMIN")))
+        .body(fromValue(mapOf("usernames" to listOf("IMS_USER1", "EXT_ADM", "AUTH_ADM"))))
+        .exchange()
+        .expectStatus().isOk
+        .expectHeader().contentType(APPLICATION_JSON)
+        .expectBody().json(
+          """
+          {
+            "content": [
+              {"username": "IMS_USER1", "hasRole": true },
+              {"username": "EXT_ADM", "hasRole": false },
+              {"username": "AUTH_ADM", "hasRole": false }
+            ],
+            "totalElements": 3,
+            "totalPages": 1,
+            "number": 0,
+            "size": 10,
+            "first": true,
+            "last": true,
+          }
+          """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `accepts 50 usernames`() {
+      externalUsersApiMockServer.stubGetSearchableRoles("/users/username/EXT_ADM/roles")
+
+      webTestClient.post().uri("/users/has-role")
+        .headers(setAuthorisation(roles = listOf("ROLE_INTEL_ADMIN")))
+        .body(fromValue(mapOf("usernames" to List(50) { "EXT_ADM" })))
+        .exchange()
+        .expectStatus().isOk
+    }
+
+    @Test
+    fun `bad request when more than 50 usernames are given`() {
+      webTestClient.post().uri("/users/has-role")
+        .headers(setAuthorisation(roles = listOf("ROLE_INTEL_ADMIN")))
+        .body(fromValue(mapOf("usernames" to List(51) { "USER_$it" })))
+        .exchange()
+        .expectStatus().isBadRequest
+    }
+
+    @Test
+    fun `bad request when no usernames are given`() {
+      webTestClient.post().uri("/users/has-role")
+        .headers(setAuthorisation(roles = listOf("ROLE_INTEL_ADMIN")))
+        .body(fromValue(mapOf("usernames" to emptyList<String>())))
+        .exchange()
+        .expectStatus().isBadRequest
+    }
+
+    @Test
+    fun `bad request when a username is blank`() {
+      webTestClient.post().uri("/users/has-role")
+        .headers(setAuthorisation(roles = listOf("ROLE_INTEL_ADMIN")))
+        .body(fromValue(mapOf("usernames" to listOf("EXT_ADM", " "))))
+        .exchange()
+        .expectStatus().isBadRequest
+    }
+
+    @Test
+    fun `unauthorised when there is no token`() {
+      webTestClient.post().uri("/users/has-role")
+        .body(fromValue(mapOf("usernames" to listOf("EXT_ADM"))))
+        .exchange()
+        .expectStatus().isUnauthorized
+    }
+
+    @Test
+    fun `forbidden without ROLE_INTEL_ADMIN`() {
+      webTestClient.post().uri("/users/has-role")
+        .headers(setAuthorisation(roles = listOf("ROLE_PCMS_USER_ADMIN")))
+        .body(fromValue(mapOf("usernames" to listOf("EXT_ADM"))))
+        .exchange()
+        .expectStatus().isForbidden
+    }
+
+    @Test
+    fun `returns the upstream error rather than false when a lookup fails`() {
+      externalUsersApiMockServer.stubGetFail("/users/username/IMS_USER1/roles", SERVICE_UNAVAILABLE)
+
+      webTestClient.post().uri("/users/has-role")
+        .headers(setAuthorisation(roles = listOf("ROLE_INTEL_ADMIN")))
+        .body(fromValue(mapOf("usernames" to listOf("IMS_USER1"))))
+        .exchange()
+        .expectStatus().isEqualTo(SERVICE_UNAVAILABLE)
+
+      nomisApiMockServer.verify(0, getRequestedFor(urlPathEqualTo("/users/IMS_USER1")))
     }
   }
 

@@ -125,6 +125,8 @@ rateLimitingIngress:
   paths:
     - /users/search
     - /users/search/
+    - /users/has-role
+    - /users/has-role/
   annotations:
     # setting to 429 (default is 503) so we can alert on this
     nginx.ingress.kubernetes.io/server-snippet: |

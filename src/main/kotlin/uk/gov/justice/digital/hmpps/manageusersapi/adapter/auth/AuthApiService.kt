@@ -63,8 +63,16 @@ class AuthApiService(
   fun findAzureUserByUsername(username: String): AzureUser? = try {
     UUID.fromString(username)
     serviceWebClientUtils.getIgnoreError("/api/azureuser/{username}", AzureUser::class.java, username)
-  } catch (exception: IllegalArgumentException) {
-    log.debug("Auth not called for Azure user as username not valid UUID: {}", username)
+  } catch (_: IllegalArgumentException) {
+    log.info("Auth not called for Azure user as username not valid UUID: {}", username)
+    null
+  }
+
+  fun findAzureUserByUsernameIfPresent(username: String): AzureUser? = try {
+    UUID.fromString(username)
+    serviceWebClientUtils.getIfPresent("/api/azureuser/{username}", AzureUser::class.java, username)
+  } catch (_: IllegalArgumentException) {
+    log.info("Auth not called for Azure user as username not valid UUID: {}", username)
     null
   }
 
